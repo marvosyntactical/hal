@@ -1,0 +1,2 @@
+# hal
+Weird Home Assistant
