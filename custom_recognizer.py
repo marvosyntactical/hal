@@ -1,16 +1,17 @@
-import speech_recognition as sr
+from speech_recognition import *
+from typing import Optional, List
 
+__all__ = ["CustomRecognizer"]
 
-class CustomRecognizer(sr.Recognizer):
+class CustomRecognizer(Recognizer):
 
-    def listen_custom(self, source, timeout=None, phrase_time_limit=None, snowboy_configuration=None):
+    def listen_until_keyword(self, source, timeout=None, phrase_time_limit=None, keyword_configuration=Optional[List]):
         assert isinstance(source, AudioSource), "Source must be an audio source"
         assert source.stream is not None, "Audio source must be entered before listening, see documentation for ``AudioSource``; are you using ``source`` outside of a ``with`` statement?"
         assert self.pause_threshold >= self.non_speaking_duration >= 0
-        if snowboy_configuration is not None:
-            assert os.path.isfile(os.path.join(snowboy_configuration[0], "snowboydetect.py")), "``snowboy_configuration[0]`` must be a Snowboy root directory containing ``snowboydetect.py``"
-            for hot_word_file in snowboy_configuration[1]:
-                assert os.path.isfile(hot_word_file), "``snowboy_configuration[1]`` must be a list of Snowboy hot word configuration files"
+        if keyword_configuration is not None:
+            for hot_word_file in keyword_configuration:
+                assert os.path.isfile(hot_word_file), "``keyword_configuration`` must be a list of keyword configuration files"
 
         seconds_per_buffer = float(source.CHUNK) / source.SAMPLE_RATE
         pause_buffer_count = int(math.ceil(self.pause_threshold / seconds_per_buffer))  # number of buffers of non-speaking audio during a phrase, before the phrase should be considered complete
@@ -23,7 +24,7 @@ class CustomRecognizer(sr.Recognizer):
         while True:
             frames = collections.deque()
 
-            if snowboy_configuration is None:
+            if keyword_configuration is None:
                 # store audio input until the phrase starts
                 while True:
                     # handle waiting too long for phrase by raising an exception
@@ -48,8 +49,8 @@ class CustomRecognizer(sr.Recognizer):
                         self.energy_threshold = self.energy_threshold * damping + target_energy * (1 - damping)
             else:
                 # read audio input until the hotword is said
-                snowboy_location, snowboy_hot_word_files = snowboy_configuration
-                buffer, delta_time = self.snowboy_wait_for_hot_word(snowboy_location, snowboy_hot_word_files, source, timeout)
+                keyword_location, keyword_hot_word_files = keyword_configuration
+                buffer, delta_time = self.keyword_wait_for_hot_word(keyword_location, keyword_hot_word_files, source, timeout)
                 elapsed_time += delta_time
                 if len(buffer) == 0: break  # reached end of the stream
                 frames.append(buffer)

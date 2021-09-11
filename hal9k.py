@@ -1,188 +1,152 @@
-# started out from:
+# entered with listen, recognize, and main from:
 # https://iotdesignpro.com/projects/speech-recognition-on-raspberry-pi-for-voice-controlled-home-automation
 
+from typing import List, Dict, Optional
 from subprocess import Popen
-import speech_recognition as sr
-from custom_recognizer import CustomRecognizer
-import serial
-import RPi.GPIO as GPIO
 import logging
 from enum import Enum
+import random
 
-class HalState(Enum):
+from .custom_recognizer import CustomRecognizer
+from .automaton import VoiceControlledAutomaton, State, Exit
+from .music import JukeBox
+
+# TODO FIXME import these from their files after implementing
+VC_GPT = ...
+VC_Search = ...
+VC_Weather = ...
+VC_GPS = ...
+VC_Pizza = ...
+
+class HalState(State):
     """bot functionalities"""
-    waiting_for_activ = 0
-    music_player = 1
-    gpt = 2
-    search = 3
-    weather = 4
-    gps = 5
-    pizza = 6
+    music = 2
+    gpt = 3
+    search = 4
+    weather = 5
+    gps = 6
+    pizza = 7
 
-class MPMode(Enum):
-    """music functionalities"""
-    waiting_for_input = 0
-    local = 1 
-    youtube = 2
-
-class MPState(Enum):
-    pause = 0
-    playing = 1
-
-class VoiceActivatedMP:
-    """
-    """
-    def __init__():
-        self.state = MPState.pause
-
-    def __call__(self, text):
-        pass
-        
-
-class Hal9k:
+class Hal9k(VoiceControlledAutomaton):
     """
     Finite state automaton speech bot
+    in each HalState, input is managed by a corresponding instance of a VoiceControlledFSA subclass
     """ 
     def __init__(
             self,
-            MIC_INDEX=1,
-            snowboy_dir="/home/pi/audio/snowboy/",
-            pdml_dir="/home/pi/audio/SBpdmls/",
             **kwargs
         ):
-        self.MIC_INDEX = MIC_INDEX
-
-        self.R = CustomRecognizer()
-        self.logger = logging.getLogger()
-        self.logger.setLevel(logging.INFO)
-
-        GPIO.setwarnings(False)
-        GPIO.setmode(GPIO.BCM)
-
-        self.StateResponse = {
-            HalState.waiting_for_activ: self.respond_waiting,
-            HalState.music_player: self.respond_music_player,
-            HalState.gpt: self.respond_gpt,
-        }
-
-        # initial state
-        self.state = HalState.waiting_for_activ
-
-        self.MP = VoiceActivatedMP(
-            **kwargs
-        )
-        self.GPT3Interface(
-            **kwargs
-        )
-
-        self.snowboy_dir = snowboy_dir
-        self.pdml_dir = pdml_dir
-        # dict of hotword models, dependent on state
-        self.state_to_hotwords = {
-            HalState.waiting_for_activ: [
-                "waiting"
-            ],
-            HalState.music_player: [
-                "music"
-            ],
-            HalState.gpt: [
-                "gpt"
-            ],
-        }
-        self.pdml_ext = ".pdml"
-
-    def _get_hotwords_pdmls(self):
-        """
-        dependent on self.state
-        """ 
-        pdmls = [
-            self.pdml_dir + pdml + self.pdml_ext 
-            for pdml in self.state_to_hotwords[self.state]
+        super().__init__(name="hal", **kwargs)
+        # list of all possible keywords
+        # (each keyword is a list of tokens)
+        self.keywords += [
+            ["hey", "hal"],
+            ["yo", "hal"]
+            ["music"],
+            ["jukebox"],
+            ["gpt"],
+            ["search"],
+            ["weather"],
+            ["gps"],
+            ["pizza"],
+            ["options"],
         ]
-        return pdmls
+        # dictionary of possible keywords per state
+        # (each state has a sublist of self.keywords as value)
+        self.state_keywords: Dict[HalState, List[List[str]]] = {
+            HalState.enter: self.keywords,
+            HalState.exit: [],
+            # HalState.music,
+            # HalState.gpt,
+            # HalState.search,
+            # HalState.weather,
+            # HalState.gps,
+            # HalState.pizza,
+        }
 
+        self.SideEffectTransitionMatrix = {
+            HalState.enter: self._respond_waiting,
+            HalState.exit: self.exit,
+            HalState.music: self._respond_music,
+            HalState.gpt: self._respond_gpt,
+        }
 
-    def boot(self, wait_for_keyword=True):
-        # begin loop
-        self.main_loop()
+        self.MP = JukeBox(
+            _super=self,
+            **kwargs
+        )
+        self.GPT3 = VC_GPT(
+            _super=self,
+            **kwargs
+        )
+        self.Weather = VC_Weather(
+            _super=self,
+            **kwargs
+        )
+        self.GPS = VC_GPS(
+            **kwargs
+        )
+        self.Pizza = VC_Pizza(
+            **kwargs
+        )
 
-    def espeak(self, s, wait=False):
-        return Popen(["espeak", s], shell=wait)
+    def _respond_waiting(self, text: str) -> HalState:
+        greeting = random.choice([
+            "Hey dude.",
+            "Whats up."
+        ])
+        self.speak(greeting)
+        return self.react_to_choice(text) 
 
-    def listen(self, snowboy=True):
-        with sr.Microphone(device_index=self.MIC_INDEX) as source:
-            self.R.adjust_for_ambient_noise(source)
-
-            self.logger.info("Waiting for voice input")
-
-            if snowboy:
-                audio = self.R.listen(
-                    source,
-                    snowboy_configuration=(
-                        self.snowboy_dir,
-                        self._get_hotwords_pdmls(self.state)
-                    )
-                )   
-            else:
-                audio = self.R.listen(source)
-
-            self.logger.info("got input")
-        return audio
-
-    def recognize(self, audio):
-        try:
-            text = self.R.recognize_google(audio)
-            return text
-        except sr.UnknownValueError:
-            self.espeak("Speech Recognition could not understand")
-            return 1
-        except sr.RequestError as e:
-            self.logger.warn("Could not request results")
-            return 2
-
-    def main_loop(self):
-        while 1:
-            self.transition()
-
-    def transition(self):
-        audio = self.listen()
-        text = self.recognize(audio)
-        self.state = self.respond_to_input(text)
-
-    def respond_to_global_keywords(self, text):
-        return None
-
-    def respond_to_input(self, text) -> HalState:
-        """
-        First:
-        React to global keywords
-        THen:
-        Rule based state transitions
-        """
-        self.respond_to_global_keywords(text)
-
-        new_state = self.StateResponse[self.state](text)
-        return new_state
-
-    def respond_waiting(self, text) -> HalState:
-        assert False, text
-        return
-
-    def respond_music_player(self, text) -> HalState:
-        """
-        Music Player has its own set of states
-        """
-        state = self.MP(text)
+    def _parse_choice(self, choice: str, must_understand=False) -> Optional[HalState]:
+        if "music" in choice or "play" in choice or "juke" in choice:
+            state = HalState.music
+        elif "g" in choice and "p" in choice \
+            and "t" in choice:
+            state = HalState.gpt
+        elif "search" in choice:
+            state = HalState.search
+        elif "weather" in choice:
+            state = HalState.weather
+        elif "gps" in choice:
+            state = HalState.gps
+        elif "pizza" in choice:
+            state = HalState.pizza
+        elif "exit" in choice:
+            state = HalState.exit
+        elif "remind" in choice or "help" in choice \
+            or "options" in choice:
+            self._remind_options()
+            state = None
+        else:
+            if must_understand:
+                self.speak("You said: " + choice)
+                self.speak("Thats not an option right now. Please try again.")
+            state = None
         return state
+
+    def _exit_effects(self, text) -> None:
+        self.speak("Goodbye.")
+
+    def respond_music(self, text) -> HalState:
+        """
+        run Music Player; a lower FSA
+        after exiting, return to hal's starting state again
+        """
+        self.MP(text)
+        return HalState.enter
 
     def respond_gpt(self, text) -> HalState:
-        state = self.GPT3Interface(text)
-        return state
+        self.GPT3Interface(text)
+        return HalState.enter
 
 
         
 
 if __name__ == "__main__":
+    import RPi.GPIO as GPIO
+    GPIO.setwarnings(False)
+    GPIO.setmode(GPIO.BCM)
     hal = Hal9k()
-    hal.boot()
+    hal.run()
        
