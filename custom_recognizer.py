@@ -1,17 +1,19 @@
-from speech_recognition import *
 from typing import Optional, List
+import os
+import math
+import collections
+import time
+
+from speech_recognition import *
 
 __all__ = ["CustomRecognizer"]
 
 class CustomRecognizer(Recognizer):
 
-    def listen_until_keyword(self, source, timeout=None, phrase_time_limit=None, keyword_configuration=Optional[List]):
+    def listen_from_keyword_on(self, source, timeout=None, phrase_time_limit=None, keyword_model= None):
         assert isinstance(source, AudioSource), "Source must be an audio source"
         assert source.stream is not None, "Audio source must be entered before listening, see documentation for ``AudioSource``; are you using ``source`` outside of a ``with`` statement?"
         assert self.pause_threshold >= self.non_speaking_duration >= 0
-        if keyword_configuration is not None:
-            for hot_word_file in keyword_configuration:
-                assert os.path.isfile(hot_word_file), "``keyword_configuration`` must be a list of keyword configuration files"
 
         seconds_per_buffer = float(source.CHUNK) / source.SAMPLE_RATE
         pause_buffer_count = int(math.ceil(self.pause_threshold / seconds_per_buffer))  # number of buffers of non-speaking audio during a phrase, before the phrase should be considered complete
@@ -24,7 +26,7 @@ class CustomRecognizer(Recognizer):
         while True:
             frames = collections.deque()
 
-            if keyword_configuration is None:
+            if keyword_model is None:
                 # store audio input until the phrase starts
                 while True:
                     # handle waiting too long for phrase by raising an exception
@@ -49,8 +51,7 @@ class CustomRecognizer(Recognizer):
                         self.energy_threshold = self.energy_threshold * damping + target_energy * (1 - damping)
             else:
                 # read audio input until the hotword is said
-                keyword_location, keyword_hot_word_files = keyword_configuration
-                buffer, delta_time = self.keyword_wait_for_hot_word(keyword_location, keyword_hot_word_files, source, timeout)
+                buffer, delta_time = self.wait_for_keyword(keyword_model, source, timeout)
                 elapsed_time += delta_time
                 if len(buffer) == 0: break  # reached end of the stream
                 frames.append(buffer)
@@ -88,4 +89,47 @@ class CustomRecognizer(Recognizer):
 
         return AudioData(frame_data, source.SAMPLE_RATE, source.SAMPLE_WIDTH)
 
-    
+    def wait_for_keyword(self, source, timeout=None):
+        # load keyword library (NOT THREAD SAFE)
+
+        detector = keyword_model_detect(keyword_model)
+        # detector.SetAudioGain(1.0)
+        # detector.SetSensitivity(",".join(["0.4"] * len(keyword_hot_word_files)).encode())
+        kw_sample_rate = detector.SampleRate()
+
+        elapsed_time = 0
+        seconds_per_buffer = float(source.CHUNK) / source.SAMPLE_RATE
+        resampling_state = None
+
+        # buffers capable of holding 5 seconds of original audio
+        five_seconds_buffer_count = int(math.ceil(5 / seconds_per_buffer))
+        # buffers capable of holding 0.5 seconds of resampled audio
+        half_second_buffer_count = int(math.ceil(0.5 / seconds_per_buffer))
+        frames = collections.deque(maxlen=five_seconds_buffer_count)
+        resampled_frames = collections.deque(maxlen=half_second_buffer_count)
+        # keyword check interval
+        check_interval = 0.05
+        last_check = time.time()
+        while True:
+            elapsed_time += seconds_per_buffer
+            if timeout and elapsed_time > timeout:
+                raise WaitTimeoutError("listening timed out while waiting for keyword to be said")
+
+            buffer = source.stream.read(source.CHUNK)
+            if len(buffer) == 0:
+                break # reached end of the stream
+            frames.append(buffer)
+
+            # resample audio to the required sample rate
+            resampled_buffer, resampling_state = audioop.ratecv(buffer, source.SAMPLE_WIDTH, 1, source.SAMPLE_RATE, kw_sample_rate, resampling_state)
+            resampled_frames.append(resampled_buffer)
+            if time.time() - last_check > check_interval:
+                # run keyword detection on the resampled audio
+                assert False, type(resampled_frames)
+                keyword_result = detector.RunDetection(b"".join(resampled_frames))
+                if keyword_result > 0:
+                    break  # wake word found !
+                resampled_frames.clear()
+                last_check = time.time()
+
+        return b"".join(frames), elapsed_time    

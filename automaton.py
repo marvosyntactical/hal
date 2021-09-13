@@ -61,8 +61,8 @@ class VoiceControlledAutomaton:
         # initial state, may be overwritten by subclasses
         self.set_state(State.enter)
 
-        self.SideEffectTransitionMatrix: Dict[State, Callable[str, Union[State, Exit]]] = {}
-        self.state_keywords: Dict[State, List[List[str]]] = {}
+        self.SideEffectTransitionMatrix: Dict[State, Callable[str, Union[State, Exit]]] = NotImplemented
+        self.state_keywords: Dict[State, List[List[str]]] = NotImplemented
 
     def load_keyword_model(self):
         """
@@ -75,11 +75,6 @@ class VoiceControlledAutomaton:
 
     def speak(self, s, wait=False) -> None:
         Popen(["espeak", s], shell=wait)
-
-    def get_utterance(self, keyword=True) -> str:
-        audio = self.listen(for_keyword=keyword)
-        text = self.recognize(audio)
-        return text
 
     def keyword_transition(self) -> None:
         # listen to input and make state transition with side effects
@@ -100,8 +95,9 @@ class VoiceControlledAutomaton:
     def run(self):
         while True:
             try:
-                self.transition()
+                self.keyword_transition()
             except Exit:
+                self.state = State.enter
                 break
 
     def respond_to_input(self, text):
@@ -117,12 +113,16 @@ class VoiceControlledAutomaton:
             self.logger.info("Waiting for voice input")
 
             if for_keyword:
-                audio = self.R.listen_until_keyword(
+                audio = self.R.listen_from_keyword_on(
                     source,
                     keyword_model=self.kw_model
                 )   
             else:
                 audio = self.R.listen(source)
+
+            # TODO add optional DING sound here
+            # FIXME REMOVEME
+            self.speak("gotcha")
 
             self.logger.info("got input")
         return audio
@@ -137,6 +137,11 @@ class VoiceControlledAutomaton:
         except sr.RequestError as e:
             self.logger.warn("Could not request results")
             return 2
+
+    def get_utterance(self, keyword=True) -> str:
+        audio = self.listen(for_keyword=keyword)
+        text = self.recognize(audio)
+        return text
 
     def exit(self, text) -> State:
         self._exit_effects(text)
