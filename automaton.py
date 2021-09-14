@@ -9,7 +9,7 @@ from .custom_recognizer import CustomRecognizer
 
 __all__ = ["State", "VoiceControlledAutomaton", "Exit"]
 
-class State(Enum):
+class State:
     # all subclass VCA FSA's states must inherit from this
     enter = 0
     exit = 1
