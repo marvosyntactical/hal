@@ -6,8 +6,7 @@ import os
 from time import sleep
 import numpy as np
 
-
-from .automaton import VoiceControlledAutomaton, State, Exit
+from automaton import VoiceControlledAutomaton, State, Exit
 
 class JukeBoxState(State):
     """jukebox functionalities"""
@@ -22,13 +21,13 @@ class JukeBox(VoiceControlledAutomaton):
             self,
             **kwargs
         ):
-        super().__init__(self, name="jukebox", **kwargs)
+        super().__init__(name="jukebox", **kwargs)
         # list of all possible keywords
         # (each keyword is a list of tokens)
         self.keywords += [
-            ["local"],
-            ["youtube"],
-            ["find", "a", "song"]
+            "local",
+            "youtube",
+            "find a song"
         ]
         # dictionary of possible keywords per state
         # (each state has a sublist of self.keywords as value)
@@ -45,11 +44,9 @@ class JukeBox(VoiceControlledAutomaton):
         }
 
         self.LocalPlayer = LocalPlayer(
-            _super=self,
             **kwargs,
         )
         self.YoutubePlayer = YoutubePlayer(
-            _super=self,
             **kwargs
         )
 
@@ -131,9 +128,10 @@ class LocalPlayer(VoiceControlledAutomaton, MusicPlayer):
             self,
             music_dir="/home/pi/Music/musicSD/",
             shuffle_script_path="/home/pi/audio/hal/scripts/shuffle.sh",
+            play_list_script_path="/home/pi/audio/hal/scripts/play_list.sh",
             **kwargs
         ):
-        super().__init__(self, name="music", **kwargs)
+        super().__init__(name="local", **kwargs)
         # list of all possible keywords
         # (each keyword is a list of tokens)
         self.keywords += [
@@ -170,7 +168,11 @@ class LocalPlayer(VoiceControlledAutomaton, MusicPlayer):
 
         self.dir = music_dir
         self.tracks = os.listdir(self.dir)
-        self.shuffle_script_path
+        self.shuffle_script_path = shuffle_script_path
+        self.play_list_script_path = play_list_script_path
+
+    def respond_while_playing_list(self, text):
+        pass
 
     def respond_while_shuffling(self, text):
         if not True in [kw in text for kw in
@@ -181,8 +183,6 @@ class LocalPlayer(VoiceControlledAutomaton, MusicPlayer):
             self.remind_options()
             while True:
                 choice = self.get_utterance(keyword=False)
-
-        
 
     def closest_match(self, query):
         # TODO efficiently find k closest matches in self.tracks 
@@ -289,55 +289,77 @@ class LocalPlayer(VoiceControlledAutomaton, MusicPlayer):
         raise NotImplementedError
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class YoutubePlayer(VoiceControlledAutomaton, MusicPlayer):
     def __init__(
             self,
             **kwargs
         ):
-
+        super().__init__(name="youtube", **kwargs)
+        
         self.keywords += [
-                "find a video",
-                "next",
-                "previous",
-                "louder",
-                "quieter",
-                "pause",
-                "enough",
+            "find a video",
+            "next",
+            "previous",
+            "louder",
+            "quieter",
+            "pause",
+            "enough",
         ]
-        self.state_keywords: Dict[JukeBoxState, List[List[str]]] = {
-            JukeBoxState.enter: self.keywords,
-            JukeBoxState.exit: [],
+        self.state_keywords: Dict[YoutubeMusicState, List[List[str]]] = {
+            YoutubeMusicState.enter: self.keywords,
+            YoutubeMusicState.playing: [
+                "play", "pause", "next", "previous", "louder", "quieter", "enough"
+            ],
+            YoutubeMusicState.exit: [],
         }
 
         self.SideEffectTransitionMatrix = {
-            JukeBoxState.enter: self.react_to_choice,
-            JukeBoxState.exit: self.exit,
+            YoutubeMusicState.enter: self.react_to_choice,
+            YoutubeMusicState.exit: self.exit,
         }
+
+        self.volume = self.get_sys_volume()
+        self.process: Optional[subprocess.Popen] = None
+
+        self.dir = music_dir
+        self.tracks = os.listdir(self.dir)
+        self.search_script_path = search_script_path
+        self.play_script_path = play_script_path
+
+    def search(self, query, topk=5):
+        top_result_ids = Popen(
+            ["bash", self.search_script_path, 
+            str(topk),
+            *query.split(" ")],
+            stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+        top_ids = reversed([ID.decode("utf-8") for ID in top_result_ids.stdout])
+        return top_ids
+    
+    def play(self, videoId: str):
+        self.process = Popen(
+            ["bash", self.play_script_path, videoId],
+            stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+
+    def _parse_choice(self, choice: str, must_understand=False) -> Optional[HalState]:
+        if "shuffle" in choice:
+            state = LocalMusicState.start_shuffling
+        elif "list" in choice: 
+            state = LocalMusicState.start_playing_list
+        elif "enough" in choice:
+            state = LocalMusicState.exit
+        elif "remind" in choice or "help" in choice \
+            or "options" in choice:
+            self.remind_options()
+            state = None
+        else:
+            if must_understand:
+                self.speak("You said: " + choice)
+                self.speak("Thats not an option right now. Please try again.")
+            state = None
 
     def next(self):
         raise NotImplementedError

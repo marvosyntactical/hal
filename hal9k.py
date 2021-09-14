@@ -4,12 +4,11 @@
 from typing import List, Dict, Optional
 from subprocess import Popen
 import logging
-from enum import Enum
 import random
 
-from .custom_recognizer import CustomRecognizer
-from .automaton import VoiceControlledAutomaton, State, Exit
-from .music import JukeBox
+from custom_recognizer import CustomRecognizer
+from automaton import VoiceControlledAutomaton, State, Exit
+from music import JukeBox
 
 # TODO FIXME import these from their files after implementing
 VC_GPT = ...
@@ -40,16 +39,16 @@ class Hal9k(VoiceControlledAutomaton):
         # list of all possible keywords
         # (each keyword is a list of tokens)
         self.keywords += [
-            ["hey", "hal"],
-            ["yo", "hal"]
-            ["music"],
-            ["jukebox"],
-            ["gpt"],
-            ["search"],
-            ["weather"],
-            ["gps"],
-            ["pizza"],
-            ["options"],
+            "hey hal",
+            "yo hal"
+            "music",
+            "jukebox",
+            "gpt",
+            "search",
+            "weather",
+            "gps",
+            "pizza",
+            "options",
         ]
         # dictionary of possible keywords per state
         # (each state has a sublist of self.keywords as value)
@@ -67,32 +66,29 @@ class Hal9k(VoiceControlledAutomaton):
         self.SideEffectTransitionMatrix = {
             HalState.enter: self._respond_waiting,
             HalState.exit: self.exit,
-            HalState.music: self._respond_music,
-            HalState.gpt: self._respond_gpt,
+            HalState.music: self.respond_music,
+            HalState.gpt: self.respond_gpt,
         }
 
         self.MP = JukeBox(
-            _super=self,
             **kwargs
         )
-        self.GPT3 = VC_GPT(
-            _super=self,
-            **kwargs
-        )
-        self.Weather = VC_Weather(
-            _super=self,
-            **kwargs
-        )
-        self.GPS = VC_GPS(
-            **kwargs
-        )
-        self.Pizza = VC_Pizza(
-            **kwargs
-        )
+        # self.GPT3 = VC_GPT(
+        #     **kwargs
+        # )
+        # self.Weather = VC_Weather(
+        #     **kwargs
+        # )
+        # self.GPS = VC_GPS(
+        #     **kwargs
+        # )
+        # self.Pizza = VC_Pizza(
+        #     **kwargs
+        # )
 
     def _respond_waiting(self, text: str) -> HalState:
         greeting = random.choice([
-            "Hey dude.",
+            "Hey man.",
             "Whats up."
         ])
         self.speak(greeting)
@@ -139,14 +135,13 @@ class Hal9k(VoiceControlledAutomaton):
     def respond_gpt(self, text) -> HalState:
         self.GPT3Interface(text)
         return HalState.enter
-
-
         
 
 if __name__ == "__main__":
     import RPi.GPIO as GPIO
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BCM)
+
     hal = Hal9k()
     hal.run()
        

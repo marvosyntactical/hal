@@ -1,13 +1,13 @@
 #!/bin/bash
 
 wavs="/home/pi/audio/wavs/"
-name=${1:-"hotword"}
+name=${1:-"keyword"}
 stub=${wavs}${name}
 mono=${stub}_mono.wav
 stereo=${stub}.wav
 
 echo "==================================================="
-echo "Recording Hotword $name"
+echo "Recording keyword $name"
 echo "Press Ctrl-C to end recording ..."
 
 arecord -Dac108 -f S32_LE -r 16000 -c 4 $mono
@@ -16,7 +16,7 @@ echo "Finished; converting to stereo ..."
 sox $mono -c 2 $stereo
 rm $mono
 echo "==================================================="
-echo "Finished; playing the hotword back ..."
+echo "Finished; playing the keyword back ..."
 aplay $stereo
 
 echo "Keep? [y] or Discard [n]?"

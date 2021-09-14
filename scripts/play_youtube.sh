@@ -1,7 +1,10 @@
 #!/bin/bash
 
 videoId=$1
-link="https://www.youtube.com/watch?v=${videoId}"
+echo "got video id:"
+echo $videoId
+template="https://www.youtube.com/watch?v="
+link=$template$videoId
 
 echo $link
 

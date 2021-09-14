@@ -1,15 +1,18 @@
 from typing import List, Optional, Dict, Callable, Union
 from subprocess import Popen
 import logging
-from enum import Enum
+import os
 
 import speech_recognition as sr
 
-from .custom_recognizer import CustomRecognizer
+from custom_recognizer import CustomRecognizer
+from keywords import KWModel
 
+
+DEBUG = 0
 __all__ = ["State", "VoiceControlledAutomaton", "Exit"]
 
-class State(Enum):
+class State:
     # all subclass VCA FSA's states must inherit from this
     enter = 0
     exit = 1
@@ -41,22 +44,30 @@ class VoiceControlledAutomaton:
         _super = None,
         name = None,
         mic_index=1,
+        sound_dir="/home/pi/audio/sounds/mp3/",
+        kw_model: str="/home/pi/audio/hal/models/model.pt",
+        kw_dir: str="/home/pi/audio/sounds/keywords/",
         **kwargs
     ):
+        kwargs["_super"] = self
         """Subclass inits should first call super init, then append to self.keywords"""
         self.mic_index = int(mic_index)
+        self.sound_dir = str(sound_dir)
         
         self.keywords: List[List[str]] = []
         if _super is not None:
             assert isinstance(_super, VoiceControlledAutomaton)
             self.keywords += _super.keywords
             self.kw_model = _super.kw_model
+            self.kw_dir = _super.kw_dir
             self.R = _super.R
             self.logger = _super.logger()
         else:
             self.R = CustomRecognizer()
             self.logger = logging.getLogger(name=name)
             self.logger.setLevel(logging.INFO)
+            self.kw_dir = kw_dir
+            self.kw_model = kw_model_class(self.kw_dir, self.keywords)
 
         # initial state, may be overwritten by subclasses
         self.set_state(State.enter)
@@ -64,23 +75,29 @@ class VoiceControlledAutomaton:
         self.SideEffectTransitionMatrix: Dict[State, Callable[str, Union[State, Exit]]] = NotImplemented
         self.state_keywords: Dict[State, List[List[str]]] = NotImplemented
 
-    def load_keyword_model(self):
-        """
-        load model, dependent on self.state and self.keywords
-        """ 
-        raise NotImplementedError
-        model_path = VoiceControlledAutomaton.kw_model_dir + self.name + VoiceControlledAutomaton.kw_model_ext 
-        model = ...
-        return model
+
+    # def load_keyword_model(self):
+    #     """
+    #     load model, dependent on self.state and self.keywords
+    #     """ 
+    #     raise NotImplementedError
+    #     model_path = VoiceControlledAutomaton.kw_model_dir + self.name + VoiceControlledAutomaton.kw_model_ext 
+    #     model = ...
+    #     return model
+
+    def play_sound(self, soundfile: str):
+        f = os.path.join(self.sound_dir, soundfile+".mp3")
+        Popen(["mpg123", f])#, close_fds=1)
 
     def speak(self, s, wait=False) -> None:
-        Popen(["espeak", s], shell=wait)
+        Popen(["say", s], shell=wait)
 
     def keyword_transition(self) -> None:
         # listen to input and make state transition with side effects
-        text = self.get_utterance(for_keyword=True)
-        # within respond to input, we may enter a lower FSA
-        self.transition(text)
+        text = self.get_utterance(keyword=True)
+        if type(text) != type(1):
+            # within respond to input, we may enter a lower FSA
+            self.transition(text)
 
     def transition(self, text):
         self.set_state(self.respond_to_input(text))
@@ -113,16 +130,21 @@ class VoiceControlledAutomaton:
             self.logger.info("Waiting for voice input")
 
             if for_keyword:
-                audio = self.R.listen_from_keyword_on(
-                    source,
-                    keyword_model=self.kw_model
-                )   
+                if not DEBUG:
+                    audio = self.R.listen_from_keyword_on(
+                        source,
+                        keyword_model=self.kw_model
+                    )   
+                else:
+                    # while listen_from_keyword_on not impl, use this:
+                    audio = self.R.listen(source)
             else:
                 audio = self.R.listen(source)
 
             # TODO add optional DING sound here
             # FIXME REMOVEME
-            self.speak("gotcha")
+            self.play_sound("gotcha")
+            self.speak("I understood")
 
             self.logger.info("got input")
         return audio
@@ -132,7 +154,7 @@ class VoiceControlledAutomaton:
             text = self.R.recognize_google(audio).lower()
             return text
         except sr.UnknownValueError:
-            self.speak("Speech Recognition could not understand")
+            self.speak(f"Speech Recognition got faulty input type {type(audio)}")
             return 1
         except sr.RequestError as e:
             self.logger.warn("Could not request results")
@@ -154,6 +176,7 @@ class VoiceControlledAutomaton:
     def remind_options(self):
         self.speak("You can currently say one of the following:")
         s = " ".join([" ".join(kw) for kw in self.keywords])
+        self.speak(s)
 
     def react_to_choice(self, choice: str): 
         """
@@ -167,7 +190,7 @@ class VoiceControlledAutomaton:
         VCA.respond_to_input again
         """
         # see if initial utterance already contains valid choice
-        state = self.parse_choice(choice, must_understand=False)
+        state = self._parse_choice(choice, must_understand=False)
         if state is None:
             # in this case, ask about desired activity
             self.speak("What do you want to do?")
@@ -175,7 +198,10 @@ class VoiceControlledAutomaton:
 
             while True:
                 choice = self.get_utterance(keyword=False)
-                state = self._parse_choice(choice, must_understand=True)
+                if type(choice) == type(int):
+                    pass
+                else:
+                    state = self._parse_choice(choice, must_understand=True)
                 # got a next state? -> exit loop
                 if state is not None:
                     break
