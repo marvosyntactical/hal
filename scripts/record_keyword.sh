@@ -1,6 +1,6 @@
 #!/bin/bash
 
-wavs="/home/pi/audio/wavs/"
+wavs="../wavs/"
 name=${1:-"keyword"}
 stub=${wavs}${name}
 mono=${stub}_mono.wav

@@ -11,6 +11,7 @@ __all__ = ["CustomRecognizer"]
 class CustomRecognizer(Recognizer):
 
     def listen_from_keyword_on(self, source, timeout=None, phrase_time_limit=None, keyword_model= None):
+        # assert False, "got here"
         assert isinstance(source, AudioSource), "Source must be an audio source"
         assert source.stream is not None, "Audio source must be entered before listening, see documentation for ``AudioSource``; are you using ``source`` outside of a ``with`` statement?"
         assert self.pause_threshold >= self.non_speaking_duration >= 0
@@ -50,7 +51,9 @@ class CustomRecognizer(Recognizer):
                         target_energy = energy * self.dynamic_energy_ratio
                         self.energy_threshold = self.energy_threshold * damping + target_energy * (1 - damping)
             else:
-                # read audio input until the hotword is said
+                # let local keyword model recognize a keyword
+
+                # read audio input until the keyword is said
                 buffer, delta_time = self.wait_for_keyword(keyword_model, source, timeout)
                 elapsed_time += delta_time
                 if len(buffer) == 0: break  # reached end of the stream
@@ -89,13 +92,17 @@ class CustomRecognizer(Recognizer):
 
         return AudioData(frame_data, source.SAMPLE_RATE, source.SAMPLE_WIDTH)
 
-    def wait_for_keyword(self, source, timeout=None):
+    def wait_for_keyword(self, source, keyword_model, timeout=None):
         # load keyword library (NOT THREAD SAFE)
 
-        detector = keyword_model_detect(keyword_model)
-        # detector.SetAudioGain(1.0)
-        # detector.SetSensitivity(",".join(["0.4"] * len(keyword_hot_word_files)).encode())
-        kw_sample_rate = detector.SampleRate()
+        # keyword_model.SetAudioGain(1.0)
+        # keyword_model.SetSensitivity(",".join(["0.4"] * len(keyword_key_word_files)).encode())
+        kw_sample_rate = keyword_model.sample_rate
+
+        """
+        Specs while training keyword model:
+        * sampling rate
+        """
 
         elapsed_time = 0
         seconds_per_buffer = float(source.CHUNK) / source.SAMPLE_RATE
@@ -123,10 +130,11 @@ class CustomRecognizer(Recognizer):
             # resample audio to the required sample rate
             resampled_buffer, resampling_state = audioop.ratecv(buffer, source.SAMPLE_WIDTH, 1, source.SAMPLE_RATE, kw_sample_rate, resampling_state)
             resampled_frames.append(resampled_buffer)
+
             if time.time() - last_check > check_interval:
                 # run keyword detection on the resampled audio
                 assert False, type(resampled_frames)
-                keyword_result = detector.RunDetection(b"".join(resampled_frames))
+                keyword_result = keyword_model(b"".join(resampled_frames))
                 if keyword_result > 0:
                     break  # wake word found !
                 resampled_frames.clear()

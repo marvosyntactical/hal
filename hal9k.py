@@ -8,13 +8,16 @@ import random
 
 from custom_recognizer import CustomRecognizer
 from automaton import VoiceControlledAutomaton, State, Exit
-from music import JukeBox
 
-# TODO FIXME import these from their files after implementing
-VC_GPT = ...
-VC_Search = ...
-VC_Weather = ...
-VC_GPS = ...
+from music import JukeBox
+from wikidefine import WikiBot
+from gpt import GPTBot
+
+# # TODO FIXME import these from their files after implementing
+# VC_GPT = ...
+# VC_Search = ...
+# VC_Weather = ...
+# VC_GPS = ...
 VC_Pizza = ...
 
 class HalState(State):
@@ -25,12 +28,13 @@ class HalState(State):
     weather = 5
     gps = 6
     pizza = 7
+    define = 8
 
 class Hal9k(VoiceControlledAutomaton):
     """
     Finite state automaton speech bot
     in each HalState, input is managed by a corresponding instance of a VoiceControlledFSA subclass
-    """ 
+    """
     def __init__(
             self,
             **kwargs
@@ -44,7 +48,9 @@ class Hal9k(VoiceControlledAutomaton):
             "music",
             "jukebox",
             "gpt",
+            "talk",
             "search",
+            "define",
             "weather",
             "gps",
             "pizza",
@@ -68,14 +74,18 @@ class Hal9k(VoiceControlledAutomaton):
             HalState.exit: self.exit,
             HalState.music: self.respond_music,
             HalState.gpt: self.respond_gpt,
+            HalState.define: self.respond_define,
         }
 
         self.MP = JukeBox(
             **kwargs
         )
-        # self.GPT3 = VC_GPT(
-        #     **kwargs
-        # )
+        self.WB = WikiBot(
+            **kwargs
+        )
+        self.GPT = GPTBot(
+            **kwargs
+        )
         # self.Weather = VC_Weather(
         #     **kwargs
         # )
@@ -92,16 +102,17 @@ class Hal9k(VoiceControlledAutomaton):
             "Whats up."
         ])
         self.speak(greeting)
-        return self.react_to_choice(text) 
+        return self.react_to_choice(text)
 
     def _parse_choice(self, choice: str, must_understand=False) -> Optional[HalState]:
         if "music" in choice or "play" in choice or "juke" in choice:
             state = HalState.music
-        elif "g" in choice and "p" in choice \
-            and "t" in choice:
+        elif "gpt" in choice or "talk" in choice:
             state = HalState.gpt
         elif "search" in choice:
             state = HalState.search
+        elif "define" in choice:
+            state = HalState.define
         elif "weather" in choice:
             state = HalState.weather
         elif "gps" in choice:
@@ -132,10 +143,18 @@ class Hal9k(VoiceControlledAutomaton):
         self.MP(text)
         return HalState.enter
 
-    def respond_gpt(self, text) -> HalState:
-        self.GPT3Interface(text)
+    def respond_define(self, text) -> HalState:
+        """
+        run Wiki Bot ; a lower FSA
+        after exiting, return to hal's starting state again
+        """
+        self.WB(text)
         return HalState.enter
-        
+
+    def respond_gpt(self, text) -> HalState:
+        self.GPT(text)
+        return HalState.enter
+
 
 if __name__ == "__main__":
     import RPi.GPIO as GPIO
@@ -144,4 +163,4 @@ if __name__ == "__main__":
 
     hal = Hal9k()
     hal.run()
-       
+

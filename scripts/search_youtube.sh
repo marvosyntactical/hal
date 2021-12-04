@@ -1,17 +1,18 @@
 # read arguments: topk, then some query words
-topk=$1
+topk="5"
 
 q=""
-for token in "${@:2}"
+for token in "$@"
 do
-	q+= "%20"+$token
+	q+="%20"$token
 done
-q=${q:3}
+Q=${q:3}
 
 
-API_KEY="AIzaSyAdH_CHyRRxBxMYGa7lnhJxtyqL5LqFkm8"
+k=$(cat .ak)
 
-api_link='https://youtube.googleapis.com/youtube/v3/search?maxResults=${topk}&order=relevance&q=${q}&safeSearch=none&type=video&videoDefinition=standard&key='+${API_KEY}
+api_link="https://youtube.googleapis.com/youtube/v3/search?maxResults="${topk}"&order=relevance&q="${Q}"&safeSearch=none&type=video&videoDefinition=standard&key="${k}
+
 
 echo $api_link
 echo
@@ -25,12 +26,15 @@ curl \
 )
 
 
+relative_dir="scripts/"
+
 tmp="tmp/"
-tmpfile="${tmp}last_query.json"
+tmpfile="${relative_dir}${tmp}last_query.json"
 
-echo $json | jq . > $tmpfile | python3 reverse_yt_json.py
 
-rm $tmpfile
+echo $json | jq . > $tmpfile | python3 ${relative_dir}reverse_yt_json.py
+
+# rm $tmpfile
 
 
 
