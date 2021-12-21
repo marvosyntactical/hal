@@ -10,6 +10,10 @@ import torch.nn as nn
 import torchaudio
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import QuantizationAwareTraining
+from dataset import HAL_KW_DATASET
+
+DATASET_PATH = "hal_keywords"
+BACKEND = "qnnpack"
 
 
 """
@@ -20,7 +24,7 @@ specifically its accompanying Notebook:
     https://gist.github.com/t-vi/97dc9d58f0bfae7dcce2afc2307e65df
 """
 
-class GSC(pl.LightningDataModule):
+class HAL_KW(pl.LightningDataModule):
     def __init__(
         self,
         dl_path: Union[str, Path] = "data",
@@ -42,7 +46,7 @@ class GSC(pl.LightningDataModule):
 
         self._dl_path = dl_path
         self._batch_size = batch_size
-        
+
         if pin_memory is not None:
             self._pin_memory = pin_memory
         else:
@@ -99,15 +103,15 @@ class GSC(pl.LightningDataModule):
         """Download waveforms and prepare dataset."""
         os.makedirs(self._dl_path, exist_ok=True)
         # we don't use the dataset, but download here
-        torchaudio.datasets.speechcommands.SPEECHCOMMANDS(root=self._dl_path, download=download)
+        # torchaudio.datasets.speechcommands.SPEECHCOMMANDS(root=self._dl_path, download=download)
 
     @property
     def data_path(self):
-        return Path(self._dl_path).joinpath("speech_commands")
+        return Path(self._dl_path).joinpath(DATASET_PATH)
 
     def __dataset(self, train: bool):
-        return torchaudio.datasets.speechcommands.SPEECHCOMMANDS(root=self._dl_path,
-                                                        subset="training" if train else "validation")
+        return HAL_KW_DATASET(root=self._dl_path,
+            subset="training" if train else "validation")
 
     @property
     def labels(self):
@@ -139,7 +143,7 @@ class GSC(pl.LightningDataModule):
             pin_memory=self._pin_memory,
             num_workers=self._num_workers,
         )
-    
+
     def train_dataloader(self):
         return self.__dataloader(train=True)
 
@@ -158,9 +162,9 @@ class GSC(pl.LightningDataModule):
         return self.labels[index]
 
 class M5_2d(torch.nn.Sequential):
-    def __init__(self, n_input=1, n_output=10, stride=16, n_channel=32):
+    def __init__(self, n_input=2, n_output=10, stride=16, n_channel=32):
         super().__init__(
-            torch.nn.Unflatten(1, (1, 1)),
+            torch.nn.Unflatten(1, (1, 2)),
             torch.nn.Conv2d(n_input, n_channel, kernel_size=(1, 80), stride=(1, stride)),
             torch.nn.BatchNorm2d(n_channel),
             torch.nn.ReLU(),
@@ -186,7 +190,7 @@ class KeywordModel(pl.LightningModule):
     def __init__(
             self,
             model_class: nn.Module=M5_2d,
-            dm: pl.LightningDataModule=GSC(),
+            dm: pl.LightningDataModule=HAL_KW(),
             model=None,
             model_path: str= None
         ):
@@ -239,15 +243,11 @@ def main():
     models = "models/"
 
     # DATASET PREPARATION
-    dm = GSC(dl_path='data', num_workers=4)
-    try:
-        dm.prepare_data(download=True)
-    except:
-        os.remove("data/speech_commands_v0.02.tar.gz")
-        raise
+    dm = HAL_KW(dl_path='data', num_workers=4)
+    dm.prepare_data(download=True)
 
     # VISUALIZATION
-    waveform, sample_rate, label, speaker_id, utterance_number = dm.train_dataset[0]
+    waveform, sample_rate, label, utterance_number = dm.train_dataset[0]
     # print("Shape of waveform: {}".format(waveform.size()))
     # print("Sample rate of waveform: {}".format(sample_rate))
     # plt.plot(waveform.t().numpy())
@@ -275,7 +275,7 @@ def main():
     qmodel = KeywordModel(dm=dm)
     # for real training, t-vi uses 40 epochs or so instead of just 2
     qtrainer = pl.Trainer(gpus=n_gpus, max_epochs=1, check_val_every_n_epoch=1, callbacks=[
-        QuantizationAwareTraining(qconfig='qnnpack', modules_to_fuse=layers_to_fuse)])
+        QuantizationAwareTraining(qconfig=BACKEND, modules_to_fuse=layers_to_fuse)])
     print("Fitting quantization aware model")
     qtrainer.fit(qmodel, datamodule=dm)
     print("QAT val acc:", model.val_accuracy.compute().item())
@@ -293,7 +293,8 @@ def benchmark():
 
     models_dir =  "./models/"
 
-    torch.backends.quantized.engine = 'qnnpack'
+    # torch.backends.quantized.engine = 'qnnpack'
+    torch.backends.quantized.engine = BACKEND
 
     fp_model = torch.jit.load(models_dir+'audio_model_fp32.pt', map_location='cpu')
     q_model = torch.jit.load(models_dir+'audio_model_int8.pt', map_location='cpu')

@@ -438,7 +438,7 @@ class YoutubePlayer(VoiceControlledAutomaton, MusicPlayer):
             # stderr=subprocess.STDOUT
         )
         if DEBUG:
-            while 1:
+            while 0:
                 sleep(5)
                 print("process poll:")
                 print(self.process.poll())

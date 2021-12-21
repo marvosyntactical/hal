@@ -140,4 +140,4 @@ class CustomRecognizer(Recognizer):
                 resampled_frames.clear()
                 last_check = time.time()
 
-        return b"".join(frames), elapsed_time    
+        return b"".join(frames), elapsed_time
