@@ -23,19 +23,19 @@ class GPTBot(VoiceControlledAutomaton):
     def __init__(self, **kwargs):
         super().__init__(name="gpt bot", **kwargs)
 
-        self.keywords += [
+        self.keywords = [
             "funny",
             "serious",
             "watts",
             "rhyme",
             "joke",
             "norm",
+            "options",
+            "enough",
         ]
 
-        self.temperatures = {
-            False: 0.3,
-            True: 0.1,
-        }
+        self.temperature = 1.0 # initially serious
+
         self.examples = {
             GPTState.rhyme: {
                 "when it chimes": "it rhymes",
@@ -111,7 +111,6 @@ conveying the wisdoms of the Buddha, Chinese and Japanese Masters.
             GPTState.rhyme: 20,
             GPTState.watts: 100,
         }
-        self.serious = False
 
     def init_gptj_context(self, state: Optional[GPTState]=None):
         print("Loading gptj")
@@ -122,19 +121,25 @@ conveying the wisdoms of the Buddha, Chinese and Japanese Masters.
         )
         print("Loaded gptj")
 
+    def set_temperature(self, be_serious: bool):
+        if be_serious:
+            self.temperature = 1.0
+        else:
+            # be more random
+            self.temperature = 0.6
+
 
     def converse(self, prompt: str) -> GPTState:
         print("You: ", prompt)
 
         max_tokens = self._converse_max_tokens[self.state]
-        temperature = self.temperatures[self.serious]
 
         response = self.gptj_context.completion(
             prompt,
             # user=User,
             # bot=Bot,
             max_tokens=max_tokens,
-            temperature=temperature,
+            temperature=self.temperature,
             top_p=1.0
         )
         print("Bot: ", response)
@@ -145,15 +150,16 @@ conveying the wisdoms of the Buddha, Chinese and Japanese Masters.
             {prompt: response}
         )
 
-        self.serious = False
-
         return self.state
 
     def _parse_choice(self, choice: str, must_understand=False) -> Optional[GPTState]:
         if "serious" in choice:
-            self.serious = True
+            self.set_temperature(True)
+            self.speak("Okay, let's keep it real from now on.")
+
         if "funny" in choice:
-            self.serious = False
+            self.set_temperature(False)
+            self.speak(f"Alright, i'll be a bit more random, temperature set to {self.temperature}")
 
         if "norm" in choice:
             state = GPTState.norm
@@ -164,6 +170,8 @@ conveying the wisdoms of the Buddha, Chinese and Japanese Masters.
         elif "watts" in choice:
             state = GPTState.watts
             self.init_gptj_context(state)
+        elif "enough" in choice:
+            state = GPTState.exit
         elif "remind" in choice or "help" in choice \
             or "options" in choice:
             self.remind_options()

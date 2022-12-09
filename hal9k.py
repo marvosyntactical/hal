@@ -12,6 +12,7 @@ from automaton import VoiceControlledAutomaton, State, Exit
 from music import JukeBox
 from wikidefine import WikiBot
 from gpt import GPTBot
+from chat import ChatBot
 
 # # TODO FIXME import these from their files after implementing
 # VC_GPT = ...
@@ -29,6 +30,7 @@ class HalState(State):
     gps = 6
     pizza = 7
     define = 8
+    chat = 9
 
 class Hal9k(VoiceControlledAutomaton):
     """
@@ -53,6 +55,7 @@ class Hal9k(VoiceControlledAutomaton):
             "define",
             "weather",
             "gps",
+            "let's chat",
             "pizza",
             "options",
         ]
@@ -74,16 +77,24 @@ class Hal9k(VoiceControlledAutomaton):
             HalState.exit: self.exit,
             HalState.music: self.respond_music,
             HalState.gpt: self.respond_gpt,
+            HalState.chat: self.respond_chat,
             HalState.define: self.respond_define,
         }
 
         self.MP = JukeBox(
+            _super=self,
             **kwargs
         )
         self.WB = WikiBot(
+            _super=self,
             **kwargs
         )
         self.GPT = GPTBot(
+            _super=self,
+            **kwargs
+        )
+        self.Chat = ChatBot(
+            _super=self,
             **kwargs
         )
         # self.Weather = VC_Weather(
@@ -98,7 +109,7 @@ class Hal9k(VoiceControlledAutomaton):
 
     def _respond_waiting(self, text: str) -> HalState:
         greeting = random.choice([
-            "Hey man.",
+            "Hi Marv.",
             "Whats up."
         ])
         self.speak(greeting)
@@ -109,6 +120,8 @@ class Hal9k(VoiceControlledAutomaton):
             state = HalState.music
         elif "gpt" in choice or "talk" in choice:
             state = HalState.gpt
+        elif "chat" in choice or "simsalabim" in choice:
+            state = HalState.chat
         elif "search" in choice:
             state = HalState.search
         elif "define" in choice:
@@ -119,11 +132,11 @@ class Hal9k(VoiceControlledAutomaton):
             state = HalState.gps
         elif "pizza" in choice:
             state = HalState.pizza
-        elif "exit" in choice:
+        elif "exit" in choice or "bye" in choice:
             state = HalState.exit
         elif "remind" in choice or "help" in choice \
             or "options" in choice:
-            self._remind_options()
+            self.remind_options()
             state = None
         else:
             if must_understand:
@@ -155,8 +168,13 @@ class Hal9k(VoiceControlledAutomaton):
         self.GPT(text)
         return HalState.enter
 
+    def respond_chat(self, text) -> HalState:
+        self.Chat(text)
+        return HalState.enter
+
 
 if __name__ == "__main__":
+
     import RPi.GPIO as GPIO
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BCM)

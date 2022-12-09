@@ -1,3 +1,31 @@
+# Revamp
+
+## Keyword based Interaction
+
+Goals:
+1. Activate based on keywordmodel trained on voice.
+2. Only then pass to google.
+3. Avoid activation based on noise this way.
+4. Make requested (loud) stuff run in background, and stay reactive
+
+* [TODO] write method KWModel.infer(bytes) that transforms to tensor
+* [TODO] go from bytestring waveform to tensor waveform
+* [TODO] in sr, find how audioop converts bytes to floats
+* [TODO] how to get stereo sr stream? is dataset in actual stereo?
+* [TODO] speech recognition waveform type: pyaudio -> audioop byte fragment
+* [TODO] pl waveform type: torchaudio.load output
+* [TODO] 
+
+## Dataset & Model
+* [TODO] add background noise to dataset 
+
+## Non-Keyword Interaction
+
+* [TODO] fuck around
+* [DONE] fix going back to super VCA not working (say "enough")
+* [TODO] find out
+
+
 # hal9k bot notes
 
 * snowboy deprecated; write own keyword detector?

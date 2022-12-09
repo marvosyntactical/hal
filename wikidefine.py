@@ -18,7 +18,10 @@ class WikiBotState(State):
 class WikiBot(VoiceControlledAutomaton):
     def __init__(self, **kwargs):
         super().__init__(name="wikibot", **kwargs)
-        self.keywords += ["define"]
+
+        self.keywords = [
+            "define",
+        ]
 
         self.state_keywords = {
             WikiBotState.enter: self.keywords,
@@ -35,15 +38,28 @@ class WikiBot(VoiceControlledAutomaton):
 
         # via https://alanhylands.com/how-to-web-scrape-wikipedia-python-urllib-beautiful-soup-pandas/
 
-        results = wikipedia.search(query)
-        if not results:
-            self.speak("Couldnt find an article matching "+ query)
-            return WikiBotState.exit
 
-        abstract = wikipedia.page(results[0]).summary
+        err = ""
+        results = wikipedia.search(query)
+
+        if not results:
+            err = "Couldnt find an article matching "+ query
+
+            self.exit(err)
+
+
+        try:
+            abstract = wikipedia.page(results[0]).summary
+        except Exception as e:
+            err = str(e)
+            self.exit(err)
+
         print(abstract)
         self.speak(abstract)
 
         return WikiBotState.exit
+
+    def _exit_effects(self, text: str):
+        self.speak(text)
 
 

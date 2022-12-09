@@ -2,3 +2,5 @@
 */.ak
 wavs/*
 tmp/*
+.auth
+config.json

@@ -25,6 +25,7 @@ class Exit(Exception):
             self.text = args[0]
         else:
             self.text = ""
+
     def __bool__(self):
         return bool(self.text)
 
@@ -36,7 +37,7 @@ class VoiceControlledAutomaton:
 
     NOTE
     A singular underscore ("_") at beginning of method
-    denotes not privacy/visbility, but that this method should be
+    denotes not privacy/visibility, but that this method should be
     overwritten by subclasses.
     ###########################
     TODO FIXME NOTE
@@ -65,22 +66,25 @@ class VoiceControlledAutomaton:
         """Subclass inits should first call super init, then append to self.keywords"""
         self.mic_index = int(mic_index)
         self.sound_dir = str(sound_dir)
+        self.super = None
 
         self.keywords: List[List[str]] = []
         if _super is not None:
+            self.super = _super
             assert isinstance(_super, VoiceControlledAutomaton)
             self.keywords += _super.keywords
             self.kw_model = _super.kw_model
             self.R = _super.R
+            self.name = name
             self.logger = _super.logger
             self.log_user_utterances = _super.log_user_utterances
             self.log_automaton_utterances = _super.log_automaton_utterances
         else:
             self.R = CustomRecognizer()
-            self.name=name
+            self.name = name
             self.logger = logging.getLogger(name=self.name)
             self.logger.setLevel(logging.INFO)
-            if DEBUG: kw_model_path=None
+            if DEBUG: kw_model_path = None
             self.kw_model = KeywordModel(model_path=kw_model_path)
             self.log_user_utterances = log_user_utterances
             self.log_automaton_utterances = log_automaton_utterances
@@ -105,11 +109,12 @@ class VoiceControlledAutomaton:
     def play_sound(self, soundfile: str):
 
         f = os.path.join(self.sound_dir, soundfile+".mp3")
+
         if not os.path.exists(f):
             f = os.path.join(self.sound_dir, soundfile+".wav")
             Popen(["aplay", f])
         else:
-            Popen(["mpg123", f])#, close_fds=1)
+            Popen(["mpg123", f]) #, close_fds=1)
 
     def speak(self, s, wait=True) -> None:
         say_process = Popen(["say", s], shell=False)
@@ -142,8 +147,15 @@ class VoiceControlledAutomaton:
             try:
                 self.keyword_transition()
             except Exit as couldnt_handle:
+                print(f"{self} received Exit")
+                # self.keyword_transition()
                 self.reset()
-                return couldnt_handle
+                if self.super is not None:
+                    print(f"{self} passes to super")
+                    raise couldnt_handle
+                else:
+                    print(f"{self} passes")
+                    pass
 
     def reset(self):
         self.state = State.enter
@@ -227,6 +239,7 @@ class VoiceControlledAutomaton:
             self.speak(f"{self} has the following options:")
             # self.speak("You can currently say one of the following:")
             s = ", ".join(self.keywords)
+
         self.speak(s)
 
     def react_to_choice(self, choice: str):
@@ -244,17 +257,18 @@ class VoiceControlledAutomaton:
         state = self._parse_choice(choice, must_understand=False)
         if state is None:
             # in this case, ask about desired activity
-            self.remind_options()
+            # self.remind_options()
 
-            while True:
-                choice = self.get_utterance(keyword=False)
-                if type(choice) == int:
-                    pass
-                else:
-                    state = self._parse_choice(choice, must_understand=True)
-                # got a next state? -> exit loop
-                if state is not None:
-                    break
+            # while True:
+            #     choice = self.get_utterance(keyword=False)
+            #     if type(choice) == int:
+            #         pass
+            #     else:
+            #         state = self._parse_choice(choice, must_understand=True)
+            #     # got a next state? -> exit loop
+            #     if state is not None:
+            #         break
+            return self.state
         # self.play_sound("pling")
 
         self.set_state(state)
@@ -271,6 +285,7 @@ class VoiceControlledAutomaton:
     def _parse_choice(self, text: str, must_understand:bool = False) -> Optional[State]:
         # overwrite me
         raise NotImplementedError
+
     def __str__(self):
         return self.name
 

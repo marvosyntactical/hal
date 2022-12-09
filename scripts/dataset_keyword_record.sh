@@ -5,7 +5,7 @@ wavs="data/hal_keywords/"$label"/"
 # name=${2:-"keyword"}
 
 # find running number of existing wavs
-# wav file names: 01234.wav
+# wav file name format: 1234.wav
 max_file=$(ls $wavs | sort -n | tail -n 1)
 max_index=${max_file%.*}
 name=$((max_index+1))

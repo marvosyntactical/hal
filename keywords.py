@@ -8,6 +8,8 @@ from matplotlib import pyplot as plt
 import torch
 import torch.nn as nn
 import torchaudio
+
+
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import QuantizationAwareTraining
 from dataset import HAL_KW_DATASET
@@ -194,6 +196,7 @@ class KeywordModel(pl.LightningModule):
             model=None,
             model_path: str= None
         ):
+
         # n_input = 1 for mono, 2 for stereo
         super().__init__()
         if model is not None:
@@ -201,15 +204,19 @@ class KeywordModel(pl.LightningModule):
         else:
             self.model = model_class(n_input=1, n_output=len(dm.labels))
             if model_path is not None:
-                print(f"Attempting to load weights from {model_path}...")
+                print(f"Attempting to load weights from {model_path} ...")
                 try:
-                    model.load_state_dict(torch.load(model_path))
+                    state_dict = torch.load(model_path).state_dict()
+                    state_dict = {k.replace("model.", ""): v for (k, v) in state_dict.items()}
+                    self.model.load_state_dict(state_dict)
                 except FileNotFoundError as FNFE:
                     print("Got FileNotFoundError: {FNFE}")
+
         self.val_accuracy = pl.metrics.Accuracy()
         self.sample_rate = dm.sample_rate
 
     def forward(self, x):
+        print(x.shape)
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
@@ -228,6 +235,7 @@ class KeywordModel(pl.LightningModule):
         self.log('valid_acc', acc, on_step=True, on_epoch=True)
         self.log('valid_loss',loss, on_step=True, on_epoch=True)
         return loss
+
 
     def configure_optimizers(self):
         opt = torch.optim.Adam(self.model.parameters(), lr=0.005, weight_decay=0.0001)
@@ -248,9 +256,11 @@ def main():
 
     # VISUALIZATION
     waveform, sample_rate, label, utterance_number = dm.train_dataset[0]
-    # print("Shape of waveform: {}".format(waveform.size()))
-    # print("Sample rate of waveform: {}".format(sample_rate))
+    print("Type of waveform: {}".format(type(waveform)))
+    print("Shape of waveform: {}".format(waveform.size()))
+    print("Sample rate of waveform: {}".format(sample_rate))
     # plt.plot(waveform.t().numpy())
+    # assert False
 
     # FP32 MODEL INITIALIZATION
     # (use 2d architecture here already)
@@ -274,8 +284,8 @@ def main():
     # QAT
     qmodel = KeywordModel(dm=dm)
     # for real training, t-vi uses 40 epochs or so instead of just 2
-    qtrainer = pl.Trainer(gpus=n_gpus, max_epochs=1, check_val_every_n_epoch=1, callbacks=[
-        QuantizationAwareTraining(qconfig=BACKEND, modules_to_fuse=layers_to_fuse)])
+    qtrainer = pl.Trainer(gpus=n_gpus, max_epochs=1, check_val_every_n_epoch=1, callbacks=[QuantizationAwareTraining(qconfig=BACKEND, modules_to_fuse=layers_to_fuse)])
+
     print("Fitting quantization aware model")
     qtrainer.fit(qmodel, datamodule=dm)
     print("QAT val acc:", model.val_accuracy.compute().item())
@@ -316,4 +326,4 @@ def benchmark():
 
 if __name__ == "__main__":
     main()
-    # benchmark()
+    benchmark()

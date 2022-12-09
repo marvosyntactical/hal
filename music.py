@@ -30,9 +30,13 @@ class JukeBox(VoiceControlledAutomaton):
         super().__init__(name="jukebox", **kwargs)
         # list of all possible keywords
         # (each keyword is a list of tokens)
-        self.keywords += [
+        self.keywords = [
             "local",
+            "shuffle",
+            "find",
             "youtube",
+            "options",
+            "enough",
         ]
         # dictionary of possible keywords per state
         # (each state has a sublist of self.keywords as value)

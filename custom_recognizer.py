@@ -4,6 +4,12 @@ import math
 import collections
 import time
 
+import soundfile as sf
+import io
+
+import torch
+import numpy as np
+
 from speech_recognition import *
 
 __all__ = ["CustomRecognizer"]
@@ -54,7 +60,7 @@ class CustomRecognizer(Recognizer):
                 # let local keyword model recognize a keyword
 
                 # read audio input until the keyword is said
-                buffer, delta_time = self.wait_for_keyword(keyword_model, source, timeout)
+                buffer, delta_time = self.wait_for_keyword(source, keyword_model, timeout)
                 elapsed_time += delta_time
                 if len(buffer) == 0: break  # reached end of the stream
                 frames.append(buffer)
@@ -133,8 +139,17 @@ class CustomRecognizer(Recognizer):
 
             if time.time() - last_check > check_interval:
                 # run keyword detection on the resampled audio
-                assert False, type(resampled_frames)
-                keyword_result = keyword_model(b"".join(resampled_frames))
+                print("passing keyword to model ...")
+                inp = b"".join(resampled_frames)
+                print(inp)
+                inp = bytearray(inp)
+                print(inp)
+                arr = torch.Tensor(np.array(inp, dtype=np.float32))
+                print(arr)
+                inp = torch.stack([arr, arr], dim=0).unsqueeze(0)
+
+                keyword_result = keyword_model(inp)
+                print(f"model decided on class {keyword_result}")
                 if keyword_result > 0:
                     break  # wake word found !
                 resampled_frames.clear()
